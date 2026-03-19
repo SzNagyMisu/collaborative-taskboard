@@ -58,6 +58,7 @@ const tasks: Task[] = [
             v-for="task in tasks.filter((task) => task.status === column.key)"
             :key="task.id"
             :title="task.title"
+            @update:title="task.title = $event"
             :status="task.status"
             :size="task.size"
           />
