@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 type Status = 'To Do' | 'In Progress' | 'Done'
@@ -18,13 +19,13 @@ const columns: { key: Status; title: Status }[] = [
   { key: 'Done', title: 'Done' }
 ]
 
-const tasks: Task[] = [
+const tasks = ref<Task[]>([
   { id: 1, title: 'Set up project structure', status: 'To Do', size: 'M' },
   { id: 2, title: 'Design task card layout', status: 'In Progress', size: 'S' },
   { id: 3, title: 'Implement taskboard columns', status: 'In Progress', size: 'L' },
   { id: 4, title: 'Review and refactor', status: 'Done', size: 'M' },
   { id: 5, title: 'Write documentation', status: 'To Do', size: 'S' }
-]
+])
 </script>
 
 <template>
@@ -60,7 +61,9 @@ const tasks: Task[] = [
             :title="task.title"
             @update:title="task.title = $event"
             :status="task.status"
+            @update:status="task.status = $event"
             :size="task.size"
+            @update:size="task.size = $event"
           />
 
           <p

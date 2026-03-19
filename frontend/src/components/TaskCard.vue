@@ -13,40 +13,55 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:title': [value: string]
+  'update:status': [value: Status]
+  'update:size': [value: Size]
 }>()
 
-const isEditing = ref(false)
+const isEditingTitle = ref(false)
 const localTitle = ref(props.title)
 
 watch(
   () => props.title,
   (newTitle) => {
-    if (!isEditing.value) {
+    if (!isEditingTitle.value) {
       localTitle.value = newTitle
     }
   }
 )
 
-const startEditing = () => {
-  isEditing.value = true
+const startEditingTitle = () => {
+  isEditingTitle.value = true
 }
 
-const finishEditing = () => {
+const finishEditingTitle = () => {
   const trimmed = localTitle.value.trim()
   const nextTitle = trimmed.length > 0 ? trimmed : props.title
   localTitle.value = nextTitle
   emit('update:title', nextTitle)
-  isEditing.value = false
+  isEditingTitle.value = false
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Enter') {
     event.preventDefault()
-    finishEditing()
+    finishEditingTitle()
   } else if (event.key === 'Escape') {
     localTitle.value = props.title
-    isEditing.value = false
+    isEditingTitle.value = false
   }
+}
+
+const statusOptions: Status[] = ['To Do', 'In Progress', 'Done']
+const sizeOptions: Size[] = ['XS', 'S', 'M', 'L', 'XL']
+
+const handleStatusChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value as Status
+  emit('update:status', value)
+}
+
+const handleSizeChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value as Size
+  emit('update:size', value)
 }
 </script>
 
@@ -54,29 +69,56 @@ const handleKeydown = (event: KeyboardEvent) => {
   <article class="card">
     <div class="card-header">
       <input
-        v-if="isEditing"
+        v-if="isEditingTitle"
         v-model="localTitle"
         class="card-title-input"
         type="text"
-        @blur="finishEditing"
+        @blur="finishEditingTitle"
         @keydown="handleKeydown"
       >
       <h3
         v-else
         class="card-title"
-        @click="startEditing"
+        @click="startEditingTitle"
       >
         {{ localTitle }}
       </h3>
     </div>
 
     <div class="card-meta">
-      <span class="card-pill card-pill-status">
-        {{ props.status }}
-      </span>
-      <span class="card-pill card-pill-size">
-        Size: {{ props.size }}
-      </span>
+      <label class="card-field">
+        <span class="card-label">Status</span>
+        <select
+          class="card-select card-pill card-pill-status"
+          :value="props.status"
+          @change="handleStatusChange"
+        >
+          <option
+            v-for="option in statusOptions"
+            :key="option"
+            :value="option"
+          >
+            {{ option }}
+          </option>
+        </select>
+      </label>
+
+      <label class="card-field">
+        <span class="card-label">Size</span>
+        <select
+          class="card-select card-pill card-pill-size"
+          :value="props.size"
+          @change="handleSizeChange"
+        >
+          <option
+            v-for="option in sizeOptions"
+            :key="option"
+            :value="option"
+          >
+            {{ option }}
+          </option>
+        </select>
+      </label>
     </div>
   </article>
 </template>
@@ -142,7 +184,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 .card-meta {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.6rem;
 }
 
 .card-pill {
@@ -154,6 +196,7 @@ const handleKeydown = (event: KeyboardEvent) => {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .card-pill-status {
@@ -166,6 +209,34 @@ const handleKeydown = (event: KeyboardEvent) => {
   background: rgba(52, 211, 153, 0.16);
   color: #a7f3d0;
   border: 1px solid rgba(52, 211, 153, 0.6);
+}
+
+.card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+}
+
+.card-label {
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card-select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #9ca3af 50%),
+    linear-gradient(135deg, #9ca3af 50%, transparent 50%);
+  background-position:
+    calc(100% - 10px) 55%,
+    calc(100% - 6px) 55%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 1.3rem;
+  cursor: pointer;
 }
 </style>
 
