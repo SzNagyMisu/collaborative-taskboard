@@ -5,6 +5,20 @@ const app = express();
 const port = 3000;
 app.use(express.json());
 
+const FRONTEND_ORIGIN = 'http://localhost:5173';
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', FRONTEND_ORIGIN);
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 // Initialize SQLite database and tasks table
 const db = new sqlite3.Database('./tasks.db');
 
@@ -15,7 +29,7 @@ db.serialize(() => {
     `CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
-      status TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('To Do', 'In Progress', 'Done')),
       size TEXT NOT NULL CHECK (size IN ('XS', 'S', 'M', 'L', 'XL'))
     )`
   );

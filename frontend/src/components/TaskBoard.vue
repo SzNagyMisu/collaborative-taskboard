@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 type Status = 'To Do' | 'In Progress' | 'Done'
@@ -19,13 +19,59 @@ const columns: { key: Status; title: Status }[] = [
   { key: 'Done', title: 'Done' }
 ]
 
-const tasks = ref<Task[]>([
-  { id: 1, title: 'Set up project structure', status: 'To Do', size: 'M' },
-  { id: 2, title: 'Design task card layout', status: 'In Progress', size: 'S' },
-  { id: 3, title: 'Implement taskboard columns', status: 'In Progress', size: 'L' },
-  { id: 4, title: 'Review and refactor', status: 'Done', size: 'M' },
-  { id: 5, title: 'Write documentation', status: 'To Do', size: 'S' }
-])
+const tasks = ref<Task[]>([])
+
+const API_BASE_URL = 'http://localhost:3000'
+
+const fetchTasks = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tasks: ${response.status}`)
+    }
+
+    const data = (await response.json()) as Task[]
+    tasks.value = data
+  } catch (error) {
+    console.error('Error fetching tasks', error)
+  }
+}
+
+const patchTask = async (taskId: number, updates: Partial<Task>) => {
+  const payload: Record<string, unknown> = { ...updates }
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to patch task ${taskId}: ${response.status}`)
+  }
+}
+
+const updateTask = async (taskId: number, updates: Partial<Task>) => {
+  const task = tasks.value.find((item) => item.id === taskId)
+  if (!task) {
+    return
+  }
+
+  const previousTask = { ...task }
+  Object.assign(task, updates)
+
+  try {
+    await patchTask(taskId, updates)
+  } catch (error) {
+    Object.assign(task, previousTask)
+    console.error('Error updating task', error)
+  }
+}
+
+onMounted(() => {
+  void fetchTasks()
+})
 </script>
 
 <template>
@@ -59,11 +105,11 @@ const tasks = ref<Task[]>([
             v-for="task in tasks.filter((task) => task.status === column.key)"
             :key="task.id"
             :title="task.title"
-            @update:title="task.title = $event"
+            @update:title="(value) => updateTask(task.id, { title: value })"
             :status="task.status"
-            @update:status="task.status = $event"
+            @update:status="(value) => updateTask(task.id, { status: value })"
             :size="task.size"
-            @update:size="task.size = $event"
+            @update:size="(value) => updateTask(task.id, { size: value })"
           />
 
           <p
