@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 type Status = 'To Do' | 'In Progress' | 'Done'
@@ -22,6 +22,9 @@ const columns: { key: Status; title: Status }[] = [
 const tasks = ref<Task[]>([])
 
 const API_BASE_URL = 'http://localhost:3000'
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws')
+
+type TaskUpdatedMessage = { type: 'task:updated'; taskId: number }
 
 const fetchTasks = async () => {
   try {
@@ -34,6 +37,65 @@ const fetchTasks = async () => {
     tasks.value = data
   } catch (error) {
     console.error('Error fetching tasks', error)
+  }
+}
+
+const fetchTaskById = async (taskId: number) => {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch task ${taskId}: ${response.status}`)
+  }
+  return (await response.json()) as Task
+}
+
+const mergeTask = (updated: Task) => {
+  const index = tasks.value.findIndex((item) => item.id === updated.id)
+  if (index === -1) {
+    tasks.value = [...tasks.value, updated]
+    return
+  }
+  const next = tasks.value.slice()
+  next[index] = updated
+  tasks.value = next
+}
+
+let taskSocket: WebSocket | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let reconnectEnabled = true
+
+const connectTaskSocket = () => {
+  if (taskSocket) {
+    taskSocket.onclose = null
+    taskSocket.close()
+    taskSocket = null
+  }
+  const socket = new WebSocket(WS_BASE_URL)
+  taskSocket = socket
+
+  socket.onmessage = (event) => {
+    void (async () => {
+      try {
+        const message = JSON.parse(event.data as string) as TaskUpdatedMessage
+        if (message.type !== 'task:updated' || typeof message.taskId !== 'number') {
+          return
+        }
+        const task = await fetchTaskById(message.taskId)
+        mergeTask(task)
+      } catch (error) {
+        console.error('Error handling task update message', error)
+      }
+    })()
+  }
+
+  socket.onclose = () => {
+    taskSocket = null
+    if (!reconnectEnabled) {
+      return
+    }
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connectTaskSocket()
+    }, 3000)
   }
 }
 
@@ -71,6 +133,20 @@ const updateTask = async (taskId: number, updates: Partial<Task>) => {
 
 onMounted(() => {
   void fetchTasks()
+  connectTaskSocket()
+})
+
+onUnmounted(() => {
+  reconnectEnabled = false
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (taskSocket) {
+    taskSocket.onclose = null
+    taskSocket.close()
+    taskSocket = null
+  }
 })
 </script>
 

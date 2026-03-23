@@ -1,5 +1,7 @@
+const http = require('http');
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
+const WebSocket = require('ws');
 
 const app = express();
 const port = 3000;
@@ -69,9 +71,39 @@ app.get('/tasks', (req, res) => {
   });
 });
 
-function updateTaskHandler(req, res) {
+function parseTaskIdParam(req) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  return id;
+}
+
+app.get('/tasks/:id', (req, res) => {
+  const id = parseTaskIdParam(req);
+  if (id === null) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+
+  db.get(
+    'SELECT id, title, status, size FROM tasks WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        console.error('Error fetching task:', err);
+        return res.status(500).json({ error: 'Failed to fetch task' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      res.json(row);
+    }
+  );
+});
+
+function updateTaskHandler(req, res) {
+  const id = parseTaskIdParam(req);
+  if (id === null) {
     return res.status(400).json({ error: 'Invalid task id' });
   }
 
@@ -134,6 +166,7 @@ function updateTaskHandler(req, res) {
           console.error('Error selecting updated task:', selectErr);
           return res.status(500).json({ error: 'Failed to fetch updated task' });
         }
+        broadcastTaskUpdated(id);
         res.json(row);
       }
     );
@@ -143,6 +176,26 @@ function updateTaskHandler(req, res) {
 app.patch('/tasks/:id', updateTaskHandler);
 app.put('/tasks/:id', updateTaskHandler);
 
-app.listen(port, () => {
+const server = http.createServer(app);
+
+const wss = new WebSocket.Server({ server });
+
+function broadcastTaskUpdated(taskId) {
+  const payload = JSON.stringify({ type: 'task:updated', taskId });
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  }
+}
+
+wss.on('connection', (ws, req) => {
+  const origin = req.headers.origin;
+  if (origin !== FRONTEND_ORIGIN) {
+    ws.close(1008, 'Unauthorized origin');
+  }
+});
+
+server.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
