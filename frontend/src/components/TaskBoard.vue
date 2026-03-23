@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 type Status = 'To Do' | 'In Progress' | 'Done'
@@ -69,8 +69,16 @@ const updateTask = async (taskId: number, updates: Partial<Task>) => {
   }
 }
 
+let intervalId: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
-  void fetchTasks()
+  intervalId = setInterval(() => {
+    void fetchTasks()
+  }, 1000)
+})
+onUnmounted(() => {
+  if (intervalId) {
+    clearInterval(intervalId)
+  }
 })
 </script>
 
