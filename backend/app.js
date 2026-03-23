@@ -3,9 +3,12 @@ const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const port = 3000;
+app.use(express.json());
 
 // Initialize SQLite database and tasks table
 const db = new sqlite3.Database('./tasks.db');
+
+const ALLOWED_SIZES = new Set(['XS', 'S', 'M', 'L', 'XL']);
 
 db.serialize(() => {
   db.run(
@@ -27,8 +30,11 @@ db.serialize(() => {
       const stmt = db.prepare(
         'INSERT INTO tasks (title, status, size) VALUES (?, ?, ?)'
       );
-      stmt.run('Initial task', 'todo', 'XS');
-      stmt.run('Second task', 'in-progress', 'XL');
+      stmt.run('Set up project structure', 'To Do', 'M');
+      stmt.run('Design task card layout', 'In Progress', 'S');
+      stmt.run('Implement taskboard columns', 'In Progress', 'L');
+      stmt.run('Review and refactor', 'Done', 'M');
+      stmt.run('Write documentation', 'To Do', 'S');
       stmt.finalize();
     }
   });
@@ -48,6 +54,80 @@ app.get('/tasks', (req, res) => {
     res.json(rows);
   });
 });
+
+function updateTaskHandler(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+
+  const { title, status, size } = req.body ?? {};
+  const updates = [];
+  const values = [];
+
+  if (title !== undefined) {
+    if (typeof title !== 'string' || title.trim().length === 0) {
+      return res.status(400).json({ error: 'title must be a non-empty string' });
+    }
+    updates.push('title = ?');
+    values.push(title.trim());
+  }
+
+  if (status !== undefined) {
+    if (typeof status !== 'string' || status.trim().length === 0) {
+      return res.status(400).json({ error: 'status must be a non-empty string' });
+    }
+    updates.push('status = ?');
+    values.push(status.trim());
+  }
+
+  if (size !== undefined) {
+    if (typeof size !== 'string') {
+      return res.status(400).json({ error: 'size must be a string' });
+    }
+    const normalizedSize = size.trim().toUpperCase();
+    if (!ALLOWED_SIZES.has(normalizedSize)) {
+      return res.status(400).json({
+        error: `size must be one of ${Array.from(ALLOWED_SIZES).join(', ')}`
+      });
+    }
+    updates.push('size = ?');
+    values.push(normalizedSize);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'Provide title, status, or size to update' });
+  }
+
+  const sql = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`;
+  values.push(id);
+
+  db.run(sql, values, function runCallback(err) {
+    if (err) {
+      console.error('Error updating task:', err);
+      return res.status(500).json({ error: 'Failed to update task' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    db.get(
+      'SELECT id, title, status, size FROM tasks WHERE id = ?',
+      [id],
+      (selectErr, row) => {
+        if (selectErr) {
+          console.error('Error selecting updated task:', selectErr);
+          return res.status(500).json({ error: 'Failed to fetch updated task' });
+        }
+        res.json(row);
+      }
+    );
+  });
+}
+
+app.patch('/tasks/:id', updateTaskHandler);
+app.put('/tasks/:id', updateTaskHandler);
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
