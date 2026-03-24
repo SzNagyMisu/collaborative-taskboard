@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 type Status = 'To Do' | 'In Progress' | 'Done'
@@ -22,6 +22,27 @@ const columns: { key: Status; title: Status }[] = [
 const tasks = ref<Task[]>([])
 
 const API_BASE_URL = 'http://localhost:3000'
+const EVENTS_URL = `${API_BASE_URL}/events`
+
+const fetchTaskById = async (taskId: number) => {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch task ${taskId}: ${response.status}`)
+  }
+  return (await response.json()) as Task
+}
+
+const mergeTask = (updated: Task) => {
+  const index = tasks.value.findIndex((task) => task.id === updated.id)
+  if (index === -1) {
+    tasks.value = [...tasks.value, updated]
+    return
+  }
+
+  const next = tasks.value.slice()
+  next[index] = updated
+  tasks.value = next
+}
 
 const fetchTasks = async () => {
   try {
@@ -69,8 +90,41 @@ const updateTask = async (taskId: number, updates: Partial<Task>) => {
   }
 }
 
+let eventSource: EventSource | null = null
+
+const connectTaskEvents = () => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+
+  eventSource = new EventSource(EVENTS_URL)
+  eventSource.addEventListener('task-updated', (event) => {
+    void (async () => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data) as { taskId?: unknown }
+        if (typeof data.taskId !== 'number') {
+          return
+        }
+        const task = await fetchTaskById(data.taskId)
+        mergeTask(task)
+      } catch (error) {
+        console.error('Error handling task-updated event', error)
+      }
+    })()
+  })
+}
+
 onMounted(() => {
   void fetchTasks()
+  connectTaskEvents()
+})
+
+onUnmounted(() => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
 })
 </script>
 

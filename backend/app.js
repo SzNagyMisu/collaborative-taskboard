@@ -23,6 +23,7 @@ app.use((req, res, next) => {
 const db = new sqlite3.Database('./tasks.db');
 
 const ALLOWED_SIZES = new Set(['XS', 'S', 'M', 'L', 'XL']);
+const sseClients = new Set();
 
 db.serialize(() => {
   db.run(
@@ -69,9 +70,64 @@ app.get('/tasks', (req, res) => {
   });
 });
 
-function updateTaskHandler(req, res) {
+function parseTaskIdParam(req) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  return id;
+}
+
+app.get('/tasks/:id', (req, res) => {
+  const id = parseTaskIdParam(req);
+  if (id === null) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+
+  db.get(
+    'SELECT id, title, status, size FROM tasks WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        console.error('Error fetching task:', err);
+        return res.status(500).json({ error: 'Failed to fetch task' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      res.json(row);
+    }
+  );
+});
+
+app.get('/events', (req, res) => {
+  if (req.headers.accept !== undefined && !req.headers.accept.includes('text/event-stream')) {
+    return res.status(406).json({ error: 'Client must accept text/event-stream' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  res.write(': connected\n\n');
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+function broadcastTaskUpdated(taskId) {
+  const payload = `event: task-updated\ndata: ${JSON.stringify({ taskId })}\n\n`;
+  for (const client of sseClients) {
+    client.write(payload);
+  }
+}
+
+function updateTaskHandler(req, res) {
+  const id = parseTaskIdParam(req);
+  if (id === null) {
     return res.status(400).json({ error: 'Invalid task id' });
   }
 
@@ -134,6 +190,7 @@ function updateTaskHandler(req, res) {
           console.error('Error selecting updated task:', selectErr);
           return res.status(500).json({ error: 'Failed to fetch updated task' });
         }
+        broadcastTaskUpdated(id);
         res.json(row);
       }
     );
